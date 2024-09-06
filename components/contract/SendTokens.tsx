@@ -84,7 +84,9 @@ export const SendTokens = () => {
     selectAddressForToken(chain?.id);
 
     let resolvedDestinationAddress = destinationAddress;
-    if (destinationAddress.includes('.')) {
+
+    // Check if `destinationAddress` is a valid string before using `.includes()`
+    if (typeof destinationAddress === 'string' && destinationAddress.includes('.')) {
       try {
         resolvedDestinationAddress = await publicClient.getEnsAddress({
           name: normalize(destinationAddress),
@@ -203,4 +205,5 @@ export const SendTokens = () => {
     </div>
   );
 };
+
 
