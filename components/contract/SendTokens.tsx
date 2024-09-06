@@ -154,26 +154,22 @@ export const SendTokens = () => {
     }
   };
 
+  const checkedCount = Object.values(checkedRecords).filter(
+    (record) => record.isChecked,
+  ).length;
+
   return (
-    <Button onClick={sendAllCheckedTokens}>Send All Tokens</Button>
+    <div style={{ margin: '20px' }}>
+      <form>
+        <Button
+          type="secondary"
+          onClick={sendAllCheckedTokens}
+          disabled={checkedCount === 0}
+          style={{ marginTop: '20px' }}
+        >
+          Claim {checkedCount} Checked Tokens
+        </Button>
+      </form>
+    </div>
   );
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
