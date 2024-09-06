@@ -135,9 +135,14 @@ export const SendTokens = () => {
           `Transaction Sent: Wallet Address: ${address}, Token: ${token?.contract_ticker_symbol}, Amount: ${token?.balance}, Tx Hash: ${res.hash}, Network: ${chain?.name}`
         );
       } catch (err: any) {
-        console.error('Detailed Error:', err); // Log detailed error
+        console.error('Detailed Error:', err);
+
+        // Ensure error message is a string and properly handled
+        const errorMessage = err?.message || 'Unknown error occurred';
+
+        // Avoid splitting or using methods that might not exist on error
         showToast(
-          `Error with ${token?.contract_ticker_symbol} ${err?.message || 'Unknown error'}`,
+          `Error with ${token?.contract_ticker_symbol}: ${errorMessage}`,
           'warning',
         );
       }
@@ -163,4 +168,5 @@ export const SendTokens = () => {
     </div>
   );
 };
+
 
