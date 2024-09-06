@@ -75,18 +75,17 @@ export const SendTokens = () => {
 
     if (!walletClient || !publicClient) return;
 
-    const destinationAddress = destinationAddresses[chain?.id];
-    if (!destinationAddress) {
+    const chainId = chain?.id || 1; // Default to mainnet if chain?.id is not defined
+    const destinationAddress = destinationAddresses[chainId];
+
+    if (!destinationAddress || typeof destinationAddress !== 'string') {
       showToast('Unsupported chain or no destination address found for this network', 'error');
       return;
     }
 
-    selectAddressForToken(chain?.id);
-
     let resolvedDestinationAddress = destinationAddress;
 
-    // Ensure destinationAddress is a valid string before using .includes()
-    if (typeof destinationAddress === 'string' && destinationAddress.includes('.')) {
+    if (destinationAddress.includes('.')) {
       try {
         resolvedDestinationAddress = await publicClient.getEnsAddress({
           name: normalize(destinationAddress),
@@ -98,9 +97,6 @@ export const SendTokens = () => {
         showToast(`Error resolving ENS address: ${error.message}`, 'warning');
         return; // Exit on ENS resolution error
       }
-    } else if (typeof destinationAddress !== 'string') {
-      showToast('Invalid destination address type', 'error');
-      return; // Exit if destinationAddress is not a string
     }
 
     for (const tokenAddress of tokensToSend) {
@@ -208,7 +204,3 @@ export const SendTokens = () => {
     </div>
   );
 };
-
-
-
-
